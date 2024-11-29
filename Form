@@ -1,0 +1,184 @@
+using Azure;
+using Azure.Storage.Blobs;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using static System.Net.Mime.MediaTypeNames;
+
+namespace PhoneBook
+{
+    public partial class Form1 : Form
+    {
+        string connectionString = "DefaultEndpointsProtocol=https;AccountName=pm31;AccountKey=M9k9ImW2Eljw8O7juoi1YUjxl7tzGHWjdBdzB7gIN0FOXzFyMgv46BG+Mw2fxn7u8r++z1dP1rX+ASt47u+aQ==;EndpointSuffix=core.windows.net";
+        string containerName = "photo";
+        BlobServiceClient blobServiceClient;
+        public Form1()
+        {
+            InitializeComponent();
+            GetDataAsync();
+            blobServiceClient = new BlobServiceClient(connectionString);
+        }
+
+        async Task GetDataAsync()
+        {
+            // Отримання даних
+            var contacts = await Extension.GetAllEntities();
+            // Створення DataSet та таблиці для зберігання даних
+            DataSet dataSet = new DataSet();
+            DataTable table = new DataTable("ContactEntity");
+            // Додаємо колонки до таблиці
+            table.Columns.Add("PhoneNumber", typeof(string));
+            table.Columns.Add("FirstName", typeof(string));
+            table.Columns.Add("LastName", typeof(string));
+            table.Columns.Add("Email", typeof(string));
+
+            // Заповнення таблиці даними
+            foreach (var contact in contacts)
+            {
+                DataRow row = table.NewRow();
+                row["PhoneNumber"] = contact.PartitionKey;
+                row["FirstName"] = contact.FirstName;
+                row["LastName"] = contact.LastName;
+                row["Email"] = contact.Email;
+                table.Rows.Add(row);
+            }
+
+            // Додаємо таблицю до DataSet
+            dataSet.Tables.Add(table);
+            //Прив'язка DataSet до DataGridView
+            dataGridView1.DataSource = dataSet.Tables["ContactEntity"];
+            // Додаємо обробники подій
+            dataSet.Tables["ContactEntity"].RowChanged += Form1_RowChanged;
+            dataSet.Tables["ContactEntity"].RowDeleting += Form1_RowDeleting;
+        }
+
+        private async void button1_Click(object sender, EventArgs e)
+        {
+            await Extension.InsertEntityAsync(new ContactEntity()
+            {
+                PartitionKey = textBox1.Text,
+                RowKey = textBox1.Text,
+                FirstName = textBox2.Text,
+                LastName = textBox3.Text,
+                Email = textBox4.Text,
+                //Photo = textBox5.Text
+            });
+            GetDataAsync();
+        }
+
+        private async void button2_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        // Обробник події RowDeleting (Видалення запису)
+        private async void Form1_RowDeleting(object sender, DataRowChangeEventArgs e)
+        {
+            try
+            {
+                string partitionKey = e.Row["PhoneNumber"].ToString();
+                await Extension.DeleteEntity(partitionKey, partitionKey);
+                MessageBox.Show("Дані знищено.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Помилка при знищені запису: {ex.Message}");
+            }
+        }
+
+        // Обробник події RowChanged(Оновлення запису)
+        private async void Form1_RowChanged(object sender, DataRowChangeEventArgs e)
+        {
+            try
+            {
+                // Створення оновленого об'єкта для відправки в Azure Table Storage
+                var updateEntity = new ContactEntity
+                {
+                    PartitionKey = e.Row["PhoneNumber"].ToString(),
+                    RowKey = e.Row["PhoneNumber"].ToString(),
+                    FirstName = e.Row["FirstName"].ToString(),
+                    LastName = e.Row["LastName"].ToString(),
+                    Email = e.Row["Email"].ToString(),
+                    ETag = ETag.All // Вказуємо, що дозволяємо оновлення незалежно від версії
+                };
+                // Оновлюємо запис в Azure Table Storage
+                await Extension.UpdateEntity(updateEntity);
+                MessageBox.Show("Запис оновлено успішно.");
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Помилка при оновленні запису: {ex.Message}");
+            }
+        }
+
+        private async void button3_Click(object sender, EventArgs e)
+        {
+            
+        }
+
+        private async void button3_Click_1(object sender, EventArgs e)
+        {
+            //button3.Enabled = true;
+            try
+            {
+                await blobServiceClient.CreateBlobContainerAsync(containerName);
+            }
+            catch (Exception ex)
+            {
+
+            }
+            //finally 
+            //{ 
+            //    //button3.Enabled = false; 
+            //}
+        }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+            BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+            DialogResult dialogResult = openFileDialog1.ShowDialog();
+            if(dialogResult == DialogResult.OK)
+            {
+                BlobClient blobClient = containerClient.GetBlobClient(openFileDialog1.SafeFileName);
+                blobClient.UploadAsync(openFileDialog1.FileName, true);
+            }
+        }
+
+        private async void button5_Click(object sender, EventArgs e)
+        {
+            BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+            Form2 form = new Form2(blobServiceClient, containerName);
+            form.ShowDialog();
+            if(form.DialogResult== DialogResult.OK)
+            {
+                BlobClient blobClient = containerClient.GetBlobClient(form.fileName);
+                MemoryStream memoryStream = new MemoryStream();
+                await blobClient.DownloadToAsync(memoryStream);
+                //memoryStream.Position = 0;
+                Bitmap bitmap = new Bitmap(memoryStream);
+                pictureBox1.SizeMode = PictureBoxSizeMode.Zoom;
+                pictureBox1.Image = bitmap;
+            }
+        }
+
+        private async void button6_Click(object sender, EventArgs e)
+        {
+            BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+            Form2 form = new Form2(blobServiceClient, containerName);
+            form.ShowDialog();
+            if(form.DialogResult == DialogResult.OK)
+            {
+                BlobClient blobClient = containerClient.GetBlobClient(form.fileName);
+                await blobClient.DeleteAsync();
+            }
+        }
+    }
+}
