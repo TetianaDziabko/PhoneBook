@@ -1,0 +1,58 @@
+using Azure.Data.Tables;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace PhoneBook
+{
+    static class Extension
+    {
+        static string storageUri = "https://pm31.table.core.windows.net";
+        static string accountName = "pm31";
+        static string storageAccountKey = "M9k9ImW2Eljw8O7juoi1YUjxl7tzGHWjdBdzB7gIN0FOXzFyMgv46BG+Mw2fxn7u8r++z1dP1rX+ASt47u+aQ==";
+        static TableServiceClient serviceClient = new TableServiceClient(new Uri(storageUri), new TableSharedKeyCredential(accountName, storageAccountKey));
+
+        //Get table Client
+        public static async Task<TableClient> GetTableClient(string tableName)
+        {
+            var tableClient = serviceClient?.GetTableClient(tableName);
+            await tableClient?.CreateIfNotExistsAsync();
+            return tableClient;
+        }
+
+        //Insert Entity
+        public static async Task<ContactEntity> InsertEntityAsync(ContactEntity contactEntity)
+        {
+            var tableClient = await GetTableClient("ListPhones");
+            await tableClient.AddEntityAsync(contactEntity);
+            return contactEntity;
+        }
+
+        //Get Entities
+        public static async Task<List<ContactEntity>> GetAllEntities()
+        {
+            var tableClient = await GetTableClient("ListPhones");
+            var contacts = tableClient.Query<ContactEntity>().ToList();
+            return contacts;
+        }
+
+        //Delete Entity
+        public static async Task DeleteEntity(string partionKey, string rowKey)
+        {
+            var tableClient = await GetTableClient("ListPhones");
+            await tableClient.DeleteEntityAsync(partionKey, rowKey);
+
+        }
+
+        //Update Entity
+        public static async Task<ContactEntity> UpdateEntity(ContactEntity сontactEntity)
+        {
+            var tableClient = await GetTableClient("listphones");
+            await tableClient.UpsertEntityAsync(сontactEntity);
+            return сontactEntity;
+        }
+
+    }
+}
